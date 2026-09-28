@@ -63,6 +63,15 @@ BEGIN
         full_name = EXCLUDED.full_name,
         avatar_url = EXCLUDED.avatar_url,
         updated_at = NOW();
+
+    INSERT INTO public.kanban_columns (id, user_id, title, "order", color_theme)
+    VALUES
+        ('col-todo', NEW.id, 'A Fazer', 0, 'blue'),
+        ('col-progress', NEW.id, 'Em Progresso', 1, 'amber'),
+        ('col-review', NEW.id, 'Em Espera', 2, 'purple'),
+        ('col-done', NEW.id, 'Concluído Hoje', 3, 'emerald')
+    ON CONFLICT (id, user_id) DO NOTHING;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

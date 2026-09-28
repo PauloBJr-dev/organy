@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import {
   fetchKanbanData,
   syncColumns,
+  ensureDefaultColumns,
   syncTask,
   deleteTask,
   deleteColumn,
@@ -164,6 +165,27 @@ describe('supabaseKanbanService', () => {
     })
   })
 
+  describe('ensureDefaultColumns', () => {
+    it('chama syncColumns com DEFAULT_COLUMNS', async () => {
+      const upsertMock = vi.fn().mockResolvedValue({ error: null })
+      vi.spyOn(supabase, 'from').mockReturnValue({
+        upsert: upsertMock,
+      } as any)
+
+      await ensureDefaultColumns('user-abc')
+
+      expect(upsertMock).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'col-todo', user_id: 'user-abc' }),
+          expect.objectContaining({ id: 'col-progress', user_id: 'user-abc' }),
+          expect.objectContaining({ id: 'col-review', user_id: 'user-abc' }),
+          expect.objectContaining({ id: 'col-done', user_id: 'user-abc' }),
+        ]),
+        { onConflict: 'id,user_id' }
+      )
+    })
+  })
+
   describe('syncTask', () => {
     it('faz upsert da tarefa incluindo completed_at e sem campo order', async () => {
       const upsertMock = vi.fn().mockResolvedValue({ error: null })
@@ -225,6 +247,80 @@ describe('supabaseKanbanService', () => {
       const payload = upsertMock.mock.calls[0][0]
       expect(payload.completed_at).toBeNull()
       expect(payload).not.toHaveProperty('order')
+    })
+
+    it('retenta upsert da tarefa com sucesso após erro de chave estrangeira (FK violation 23503)', async () => {
+      let callCount = 0
+      const upsertMock = vi.fn().mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve({
+            error: {
+              code: '23503',
+              message:
+                'insert or update on table "tasks" violates foreign key constraint "fk_tasks_kanban_columns"',
+            },
+          })
+        }
+        return Promise.resolve({ error: null })
+      })
+
+      vi.spyOn(supabase, 'from').mockReturnValue({
+        upsert: upsertMock,
+      } as any)
+
+      const task: Task = {
+        id: 'task-fk-retry',
+        title: 'Tarefa com FK Retry',
+        columnId: 'col-todo',
+        priority: 'medium',
+        tags: [],
+        subtasks: [],
+        createdAt: '2026-09-08T00:00:00.000Z',
+        updatedAt: '2026-09-08T00:00:00.000Z',
+      }
+
+      await syncTask('user-abc', task)
+
+      expect(upsertMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('lança erro se o retry após erro de FK também falhar', async () => {
+      let callCount = 0
+      const upsertMock = vi.fn().mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve({
+            error: {
+              code: '23503',
+              message: 'violates foreign key constraint',
+            },
+          })
+        }
+        if (callCount === 2) {
+          return Promise.resolve({ error: null })
+        }
+        return Promise.resolve({
+          error: new Error('Falha no retry'),
+        })
+      })
+
+      vi.spyOn(supabase, 'from').mockReturnValue({
+        upsert: upsertMock,
+      } as any)
+
+      const task: Task = {
+        id: 'task-fk-fail',
+        title: 'Falha Retry',
+        columnId: 'col-todo',
+        priority: 'medium',
+        tags: [],
+        subtasks: [],
+        createdAt: '2026-09-08T00:00:00.000Z',
+        updatedAt: '2026-09-08T00:00:00.000Z',
+      }
+
+      await expect(syncTask('user-abc', task)).rejects.toThrow('Falha no retry')
     })
 
     it('lança erro quando upsert de tarefa falha', async () => {
@@ -309,11 +405,42 @@ describe('supabaseKanbanService', () => {
       expect(tasksPayload[0]).not.toHaveProperty('order')
       expect(tasksPayload[0]).toHaveProperty('completed_at', '2026-09-02T10:00:00.000Z')
     })
+
+    it('usa DEFAULT_COLUMNS quando columns for vazio para garantir sincronização antes das tarefas', async () => {
+      const upsertMock = vi.fn().mockResolvedValue({ error: null })
+      vi.spyOn(supabase, 'from').mockReturnValue({
+        upsert: upsertMock,
+      } as any)
+
+      const tasks: Task[] = [
+        {
+          id: 'task-1',
+          title: 'Primeira Tarefa',
+          columnId: 'col-todo',
+          priority: 'low',
+          tags: [],
+          subtasks: [],
+          createdAt: '2026-09-01T00:00:00.000Z',
+          updatedAt: '2026-09-01T00:00:00.000Z',
+        },
+      ]
+
+      await uploadLocalData('user-abc', [], tasks)
+      expect(upsertMock).toHaveBeenCalledTimes(2)
+
+      const columnsPayload = upsertMock.mock.calls[0][0]
+      expect(columnsPayload).toHaveLength(4)
+      expect(columnsPayload[0]).toHaveProperty('id', 'col-todo')
+
+      const tasksPayload = upsertMock.mock.calls[1][0]
+      expect(tasksPayload).toHaveLength(1)
+    })
   })
 
   it('exporta objeto supabaseKanbanService com todos os métodos', () => {
     expect(supabaseKanbanService.fetchKanbanData).toBeDefined()
     expect(supabaseKanbanService.syncColumns).toBeDefined()
+    expect(supabaseKanbanService.ensureDefaultColumns).toBeDefined()
     expect(supabaseKanbanService.syncTask).toBeDefined()
     expect(supabaseKanbanService.deleteTask).toBeDefined()
     expect(supabaseKanbanService.deleteColumn).toBeDefined()

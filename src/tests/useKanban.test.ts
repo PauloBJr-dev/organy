@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import React from 'react'
 
@@ -53,6 +53,7 @@ describe('useKanban', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.restoreAllMocks()
+    vi.spyOn(supabaseKanbanService, 'syncColumns').mockResolvedValue()
   })
 
   describe('Modo Visitante (Offline / Sem Usuário)', () => {
@@ -838,6 +839,75 @@ describe('useKanban', () => {
 
       expect(result.current.tasks).toHaveLength(1)
       expect(result.current.tasks[0].title).toBe('Tarefa Convidado Migrada')
+    })
+
+    it('inicializa colunas padrão na nuvem chamando syncColumns quando cloudData.columns está vazio', async () => {
+      vi.spyOn(supabaseKanbanService, 'fetchKanbanData').mockResolvedValueOnce({
+        columns: [],
+        tasks: [],
+      })
+      const syncColumnsSpy = vi
+        .spyOn(supabaseKanbanService, 'syncColumns')
+        .mockResolvedValue()
+
+      const { result } = renderHook(() => useKanban(), { wrapper: AuthWrapper })
+
+      await waitFor(() => {
+        expect(syncColumnsSpy).toHaveBeenCalledWith(
+          'user-kanban-test',
+          expect.arrayContaining([
+            expect.objectContaining({ id: 'col-todo' }),
+            expect.objectContaining({ id: 'col-progress' }),
+            expect.objectContaining({ id: 'col-review' }),
+            expect.objectContaining({ id: 'col-done' }),
+          ])
+        )
+      })
+
+      expect(result.current.columns).toHaveLength(INITIAL_DATA.columns.length)
+      expect(result.current.tasks).toHaveLength(0)
+    })
+
+    it('faz upload e preserva cachedData.tasks quando a nuvem já possui colunas mas está vazia de tarefas', async () => {
+      const localUserData = {
+        columns: INITIAL_DATA.columns,
+        tasks: [
+          {
+            id: 'task-cross-browser',
+            title: 'Tarefa Criada no Navegador A',
+            columnId: 'col-todo',
+            priority: 'urgent' as const,
+            tags: ['CrossBrowser'],
+            subtasks: [],
+            createdAt: '2026-09-01T00:00:00.000Z',
+            updatedAt: '2026-09-01T00:00:00.000Z',
+          },
+        ],
+        version: 1,
+      }
+      storageService.save(localUserData, 'user-kanban-test')
+
+      // Nuvem já tem colunas criadas pela trigger ou outro browser, mas ainda 0 tarefas
+      vi.spyOn(supabaseKanbanService, 'fetchKanbanData').mockResolvedValueOnce({
+        columns: INITIAL_DATA.columns,
+        tasks: [],
+      })
+      const uploadSpy = vi
+        .spyOn(supabaseKanbanService, 'uploadLocalData')
+        .mockResolvedValue()
+
+      const { result } = renderHook(() => useKanban(), { wrapper: AuthWrapper })
+
+      await waitFor(() => {
+        expect(uploadSpy).toHaveBeenCalledWith(
+          'user-kanban-test',
+          localUserData.columns,
+          localUserData.tasks
+        )
+      })
+
+      expect(result.current.tasks).toHaveLength(1)
+      expect(result.current.tasks[0].title).toBe('Tarefa Criada no Navegador A')
     })
   })
 

@@ -223,13 +223,27 @@ export function useKanban() {
         const cloudData = await supabaseKanbanService.fetchKanbanData(activeUserId)
         if (!isMounted) return
 
-        const hasCloudContent = cloudData.columns.length > 0 || cloudData.tasks.length > 0
+        if (activeUserId && cloudData.columns.length === 0) {
+          await supabaseKanbanService.syncColumns(activeUserId, DEFAULT_COLUMNS)
+          cloudData.columns = DEFAULT_COLUMNS
+        }
 
-        if (hasCloudContent) {
+        // Se a nuvem não tiver tarefas, mas existirem tarefas no cache local:
+        if (cloudData.tasks.length === 0 && cachedData.tasks.length > 0) {
+          await supabaseKanbanService.uploadLocalData(
+            activeUserId,
+            cachedData.columns.length > 0 ? cachedData.columns : DEFAULT_COLUMNS,
+            cachedData.tasks
+          )
+          setDataState({ data: cachedData, ownerId: activeUserId })
+          return
+        }
+
+        // Se houver tarefas na nuvem:
+        if (cloudData.tasks.length > 0) {
           setDataState({
             data: {
-              columns:
-                cloudData.columns.length > 0 ? cloudData.columns : INITIAL_DATA.columns,
+              columns: cloudData.columns.length > 0 ? cloudData.columns : DEFAULT_COLUMNS,
               tasks: cloudData.tasks,
               version: 1,
             },
@@ -238,33 +252,39 @@ export function useKanban() {
           return
         }
 
-        // Se cloudData estiver vazio (0 colunas e 0 tarefas):
-        const hasCachedTasks = cachedData.tasks.length > 0
+        // Se cloudData e cachedData estiverem com 0 tarefas, verificar se há colunas customizadas
         const hasCustomCols = hasCustomColumns(cachedData.columns)
-
-        if (hasCachedTasks || hasCustomCols) {
+        if (hasCustomCols) {
           await supabaseKanbanService.uploadLocalData(
             activeUserId,
             cachedData.columns,
             cachedData.tasks
           )
+          setDataState({ data: cachedData, ownerId: activeUserId })
           return
         }
 
-        // Se cachedData tamb?m estiver vazio: verificar se h? dados em modo visitante
+        // Se cachedData também estiver vazio: verificar se há dados em modo visitante
         const migratedData = storageService.migrateGuestData(activeUserId)
         if (migratedData && migratedData.tasks.length > 0) {
           await supabaseKanbanService.uploadLocalData(
             activeUserId,
-            migratedData.columns,
+            migratedData.columns.length > 0 ? migratedData.columns : DEFAULT_COLUMNS,
             migratedData.tasks
           )
           setDataState({ data: migratedData, ownerId: activeUserId })
           return
         }
 
-        // Se nada houver, manter INITIAL_DATA
-        setDataState({ data: INITIAL_DATA, ownerId: activeUserId })
+        // Se nada houver, manter INITIAL_DATA com colunas garantidas
+        setDataState({
+          data: {
+            columns: cloudData.columns.length > 0 ? cloudData.columns : DEFAULT_COLUMNS,
+            tasks: [],
+            version: 1,
+          },
+          ownerId: activeUserId,
+        })
       } catch (err) {
         console.error('Erro ao carregar dados do Kanban do Supabase:', err)
         // N?O alterar setData para INITIAL_DATA! Os dados locais em cachedData continuam preservados no estado e no localStorage.
