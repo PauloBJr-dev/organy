@@ -5,6 +5,7 @@ import {
   type Task,
   type Priority,
 } from '../types/kanban'
+import { DEFAULT_COLUMNS } from './seedData'
 
 export async function fetchKanbanData(
   userId: string
@@ -83,6 +84,10 @@ export async function syncColumns(userId: string, columns: Column[]): Promise<vo
   }
 }
 
+export async function ensureDefaultColumns(userId: string): Promise<void> {
+  await syncColumns(userId, DEFAULT_COLUMNS)
+}
+
 export async function syncTask(userId: string, task: Task): Promise<void> {
   const row = {
     id: task.id,
@@ -104,6 +109,30 @@ export async function syncTask(userId: string, task: Task): Promise<void> {
   })
 
   if (error) {
+    const isForeignKeyViolation =
+      (error as any).code === '23503' ||
+      (typeof error.message === 'string' &&
+        (error.message.toLowerCase().includes('foreign key') ||
+          error.message.toLowerCase().includes('kanban_columns'))) ||
+      (typeof (error as any).details === 'string' &&
+        ((error as any).details.toLowerCase().includes('foreign key') ||
+          (error as any).details.toLowerCase().includes('kanban_columns')))
+
+    if (isForeignKeyViolation) {
+      await ensureDefaultColumns(userId)
+      const { error: retryError } = await supabase.from('tasks').upsert(row, {
+        onConflict: 'id,user_id',
+      })
+      if (retryError) {
+        console.error(
+          'Erro ao sincronizar tarefa no Supabase após garantir colunas:',
+          retryError
+        )
+        throw retryError
+      }
+      return
+    }
+
     console.error('Erro ao sincronizar tarefa no Supabase:', error)
     throw error
   }
@@ -120,7 +149,7 @@ export async function deleteTask(taskId: string): Promise<void> {
 
 export async function deleteColumn(columnId: string): Promise<void> {
   if (DEFAULT_COLUMN_IDS.includes(columnId as any)) {
-    throw new Error('Colunas padr?o n?o podem ser exclu?das')
+    throw new Error('Colunas padrão não podem ser excluídas')
   }
   // Deleção em cascata nativa do PostgreSQL (ACID: Atomicidade e Consistência)
   // A exclusão da coluna aciona a remoção em cascata de todas as tarefas associadas via fk_tasks_kanban_columns
@@ -136,9 +165,8 @@ export async function uploadLocalData(
   columns: Column[],
   tasks: Task[]
 ): Promise<void> {
-  if (columns.length > 0) {
-    await syncColumns(userId, columns)
-  }
+  const columnsToSync = columns.length > 0 ? columns : DEFAULT_COLUMNS
+  await syncColumns(userId, columnsToSync)
 
   if (tasks.length > 0) {
     const taskRows = tasks.map((task) => ({
@@ -170,6 +198,7 @@ export async function uploadLocalData(
 export const supabaseKanbanService = {
   fetchKanbanData,
   syncColumns,
+  ensureDefaultColumns,
   syncTask,
   deleteTask,
   deleteColumn,

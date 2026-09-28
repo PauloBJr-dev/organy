@@ -1,4 +1,4 @@
-﻿/* eslint-disable react/only-export-components */
+/* eslint-disable react/only-export-components */
 import React, { createContext, useEffect, useState, useMemo, useCallback } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -19,11 +19,11 @@ export interface AuthContextType {
     name: string,
     email: string,
     password: string
-  ) => Promise<{ error: Error | null }>
+  ) => Promise<{ error: Error | null; user?: User | null }>
   signInWithPassword: (
     email: string,
     password: string
-  ) => Promise<{ error: Error | null }>
+  ) => Promise<{ error: Error | null; user?: User | null }>
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>
   updateUserPassword: (newPassword: string) => Promise<{ error: Error | null }>
   continueAsGuest: () => void
@@ -159,9 +159,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       name: string,
       email: string,
       password: string
-    ): Promise<{ error: Error | null }> => {
+    ): Promise<{ error: Error | null; user?: User | null }> => {
       if (!isConfigured) {
-        return { error: new Error('Serviço de autenticação não configurado.') }
+        return {
+          error: new Error('Serviço de autenticação não configurado.'),
+          user: null,
+        }
       }
 
       try {
@@ -181,6 +184,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: new Error(
               'Não foi possível criar a conta. Verifique os dados informados ou tente entrar caso já possua conta.'
             ),
+            user: null,
           }
         }
 
@@ -192,7 +196,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             localStorage.setItem('organy_guest_acknowledged', 'true')
           }
           setIsAuthModalOpen(false)
-          return { error: null }
+          return { error: null, user: data.user }
         }
 
         // Se retornou usuário sem sessão imediata (caso raro)
@@ -210,19 +214,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               localStorage.setItem('organy_guest_acknowledged', 'true')
             }
             setIsAuthModalOpen(false)
-            return { error: null }
+            return { error: null, user: signInRes.data.user }
           }
 
           setIsAuthModalOpen(false)
-          return { error: null }
+          return { error: null, user: data.user }
         }
 
-        return { error: null }
+        return { error: null, user: data.user ?? null }
       } catch {
         return {
           error: new Error(
             'Não foi possível criar a conta. Verifique os dados informados ou tente entrar caso já possua conta.'
           ),
+          user: null,
         }
       }
     },
@@ -230,12 +235,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   )
 
   const signInWithPassword = useCallback(
-    async (email: string, password: string): Promise<{ error: Error | null }> => {
+    async (
+      email: string,
+      password: string
+    ): Promise<{ error: Error | null; user?: User | null }> => {
       if (!isConfigured) {
         return {
           error: new Error(
             'Serviço de autenticação não configurado. Para testar localmente, utilize a opção Continuar sem Conta.'
           ),
+          user: null,
         }
       }
 
@@ -250,6 +259,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: new Error(
               'E-mail ou senha incorretos. Por favor, verifique suas credenciais.'
             ),
+            user: null,
           }
         }
 
@@ -260,12 +270,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           localStorage.setItem('organy_guest_acknowledged', 'true')
         }
         setIsAuthModalOpen(false)
-        return { error: null }
+        return { error: null, user: data.user }
       } catch {
         return {
           error: new Error(
             'E-mail ou senha incorretos. Por favor, verifique suas credenciais.'
           ),
+          user: null,
         }
       }
     },

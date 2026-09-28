@@ -202,7 +202,7 @@ describe('AuthContext & useAuth', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    let res: { error: Error | null } = { error: null }
+    let res: { error: Error | null; user?: User | null } = { error: null }
     await act(async () => {
       res = await result.current.signUpWithPassword(
         'Ana Silva',
@@ -222,6 +222,7 @@ describe('AuthContext & useAuth', () => {
       },
     })
     expect(res.error).toBeNull()
+    expect(res.user).toEqual(mockUser)
     expect(result.current.user).toEqual(mockUser)
     expect(result.current.session).toEqual(mockSession)
   })
@@ -369,7 +370,7 @@ describe('AuthContext & useAuth', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    let res: { error: Error | null } = { error: null }
+    let res: { error: Error | null; user?: User | null } = { error: null }
     await act(async () => {
       res = await result.current.signInWithPassword(
         'ana.silva@example.com',
@@ -382,6 +383,7 @@ describe('AuthContext & useAuth', () => {
       password: 'senha123456',
     })
     expect(res.error).toBeNull()
+    expect(res.user).toEqual(mockUser)
     expect(result.current.user).toEqual(mockUser)
     expect(result.current.session).toEqual(mockSession)
     expect(result.current.isGuestAcknowledged).toBe(true)

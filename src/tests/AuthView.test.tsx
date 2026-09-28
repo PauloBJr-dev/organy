@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AuthView } from '../views/AuthView'
 import * as useAuthModule from '../hooks/useAuth'
+import { migrationService } from '../services/migrationService'
+import type { User } from '@supabase/supabase-js'
 
 describe('AuthView Component', () => {
   const mockSignUpWithPassword = vi.fn().mockResolvedValue({ error: null })
@@ -159,5 +161,107 @@ describe('AuthView Component', () => {
     expect(
       screen.queryByRole('button', { name: /voltar ao quadro/i })
     ).not.toBeInTheDocument()
+  })
+
+  it('passa o UUID real do usuário retornado por signInWithPassword para a migração ao invés de migrated_user', async () => {
+    vi.spyOn(migrationService, 'hasGuestDataToMigrate').mockReturnValue(true)
+    const executeMigrationSpy = vi
+      .spyOn(migrationService, 'executeMigration')
+      .mockResolvedValue({
+        success: true,
+      })
+
+    const realUser: User = {
+      id: 'uuid-usuario-real-1234',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+      email: 'aluno@universidade.edu',
+      phone: '',
+      role: 'authenticated',
+      updated_at: new Date().toISOString(),
+    }
+
+    mockSignInWithPassword.mockResolvedValueOnce({
+      error: null,
+      user: realUser,
+    })
+
+    render(<AuthView initialTab="signin" />)
+
+    const emailInput = screen.getByLabelText(/e-mail acadêmico ou pessoal/i)
+    const passwordInput = screen.getByLabelText(/^senha$/i)
+
+    fireEvent.change(emailInput, { target: { value: 'aluno@universidade.edu' } })
+    fireEvent.change(passwordInput, { target: { value: 'MinhaSenha@123' } })
+
+    const submitBtn = screen.getByRole('button', { name: /entrar na conta/i })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(executeMigrationSpy).toHaveBeenCalledWith(
+        'uuid-usuario-real-1234',
+        expect.any(Function),
+        undefined
+      )
+      expect(executeMigrationSpy).not.toHaveBeenCalledWith(
+        'migrated_user',
+        expect.any(Function),
+        undefined
+      )
+    })
+  })
+
+  it('passa o UUID real do usuário retornado por signUpWithPassword para a migração ao invés de migrated_user', async () => {
+    vi.spyOn(migrationService, 'hasGuestDataToMigrate').mockReturnValue(true)
+    const executeMigrationSpy = vi
+      .spyOn(migrationService, 'executeMigration')
+      .mockResolvedValue({
+        success: true,
+      })
+
+    const realUser: User = {
+      id: 'uuid-novo-usuario-5678',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+      email: 'novo@universidade.edu',
+      phone: '',
+      role: 'authenticated',
+      updated_at: new Date().toISOString(),
+    }
+
+    mockSignUpWithPassword.mockResolvedValueOnce({
+      error: null,
+      user: realUser,
+    })
+
+    render(<AuthView initialTab="signup" />)
+
+    const nameInput = screen.getByLabelText(/nome completo/i)
+    const emailInput = screen.getByLabelText(/e-mail acadêmico ou pessoal/i)
+    const passwordInput = screen.getByLabelText(/^senha$/i)
+
+    fireEvent.change(nameInput, { target: { value: 'Novo Aluno' } })
+    fireEvent.change(emailInput, { target: { value: 'novo@universidade.edu' } })
+    fireEvent.change(passwordInput, { target: { value: 'MinhaSenha@123' } })
+
+    const submitBtn = screen.getByRole('button', { name: /criar conta e começar/i })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(executeMigrationSpy).toHaveBeenCalledWith(
+        'uuid-novo-usuario-5678',
+        expect.any(Function),
+        undefined
+      )
+      expect(executeMigrationSpy).not.toHaveBeenCalledWith(
+        'migrated_user',
+        expect.any(Function),
+        undefined
+      )
+    })
   })
 })

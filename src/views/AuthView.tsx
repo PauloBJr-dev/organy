@@ -36,7 +36,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
   onBackToBoard,
   onSuccess,
 }) => {
-  const { signUpWithPassword, signInWithPassword, resetPasswordForEmail } = useAuth()
+  const { user, signUpWithPassword, signInWithPassword, resetPasswordForEmail } =
+    useAuth()
   const toast = useToast()
 
   // Abas e formulário
@@ -110,17 +111,18 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
     setSubmitting(true)
     try {
-      const { error } = await signUpWithPassword(name.trim(), email.trim(), password)
-      if (error) {
-        setErrorMessage(error.message)
-        toast.error(`Erro ao criar conta: ${error.message}`)
+      const res = await signUpWithPassword(name.trim(), email.trim(), password)
+      if (res.error) {
+        setErrorMessage(res.error.message)
+        toast.error(`Erro ao criar conta: ${res.error.message}`)
       } else {
         toast.success('Conta criada com sucesso! Bem-vindo(a) ao Organy.')
         // Recupera o ID do usuário criado se disponível na sessão
+        const activeUserId = res.user?.id || user?.id
         const guestHasData = migrationService.hasGuestDataToMigrate()
         if (guestHasData) {
           // Dispara migração
-          handleAuthCompleted('migrated_user')
+          handleAuthCompleted(activeUserId)
         } else {
           onSuccess?.()
         }
@@ -146,15 +148,16 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
     setSubmitting(true)
     try {
-      const { error } = await signInWithPassword(email.trim(), password)
-      if (error) {
-        setErrorMessage(error.message)
-        toast.error(error.message)
+      const res = await signInWithPassword(email.trim(), password)
+      if (res.error) {
+        setErrorMessage(res.error.message)
+        toast.error(res.error.message)
       } else {
         toast.success('Login efetuado com sucesso!')
+        const activeUserId = res.user?.id || user?.id
         const guestHasData = migrationService.hasGuestDataToMigrate()
         if (guestHasData) {
-          handleAuthCompleted('migrated_user')
+          handleAuthCompleted(activeUserId)
         } else {
           onSuccess?.()
         }
