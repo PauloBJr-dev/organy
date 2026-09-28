@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   Plus,
   Trash2,
@@ -52,6 +52,7 @@ export const Column: React.FC<ColumnProps> = ({
   focusedTaskId,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false)
+  const dragDepthRef = useRef(0)
   const [columnDragPosition, setColumnDragPosition] = useState<'left' | 'right' | null>(
     null
   )
@@ -157,7 +158,13 @@ export const Column: React.FC<ColumnProps> = ({
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  // Drop handlers
+  // Drop handlers with dragDepthRef anti-flickering protection
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    dragDepthRef.current += 1
+    if (!isDragOver) setIsDragOver(true)
+  }
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
@@ -177,12 +184,20 @@ export const Column: React.FC<ColumnProps> = ({
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    setIsDragOver(false)
-    setColumnDragPosition(null)
+    if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+      return
+    }
+
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) {
+      setIsDragOver(false)
+      setColumnDragPosition(null)
+    }
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
+    dragDepthRef.current = 0
     setIsDragOver(false)
 
     const sourceColId = e.dataTransfer.getData('text/kanban-column-id')
@@ -216,6 +231,7 @@ export const Column: React.FC<ColumnProps> = ({
   return (
     <div
       id={`column-${column.id}`}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -356,21 +372,23 @@ export const Column: React.FC<ColumnProps> = ({
             )}
 
             {/* Edit column title & theme */}
-            {onUpdateColumn && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditTitle(column.title)
-                  setEditTheme(column.colorTheme)
-                  setIsEditing(true)
-                }}
-                title="Editar coluna"
-                aria-label={`Editar coluna ${column.title}`}
-                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 cursor-pointer"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {onUpdateColumn &&
+              !column.isPermanent &&
+              !DEFAULT_COLUMN_IDS.includes(column.id as any) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTitle(column.title)
+                    setEditTheme(column.colorTheme)
+                    setIsEditing(true)
+                  }}
+                  title="Editar coluna"
+                  aria-label={`Editar coluna ${column.title}`}
+                  className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 cursor-pointer"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
 
             {/* Hide column button */}
             {onHideColumn && (
@@ -435,7 +453,7 @@ export const Column: React.FC<ColumnProps> = ({
         {isDragOver && (
           <div
             data-testid="drop-indicator"
-            className="py-3 px-4 border-2 border-dashed border-blue-400 bg-blue-50/40 dark:bg-blue-950/40 ring-2 ring-blue-400/20 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 animate-pulse select-none transition-all duration-200 shadow-xs"
+            className="pointer-events-none py-3 px-4 border-2 border-dashed border-blue-400 bg-blue-50/40 dark:bg-blue-950/40 ring-2 ring-blue-400/20 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 select-none transition-all duration-200 shadow-xs"
           >
             <div className="w-2 h-2 rounded-full bg-blue-500" />
             <span>Solte para mover para {column.title}</span>

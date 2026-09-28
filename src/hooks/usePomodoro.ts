@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import confetti from 'canvas-confetti'
 import type { PomodoroSession, PomodoroMode, CatPurrType } from '../types/kanban'
 import type { ActivePomodoroSession } from '../services/pomodoroSessionService'
@@ -752,6 +752,84 @@ export function usePomodoro(
     })
   }, [])
 
+  const completeFocusSession = useCallback(
+    (taskId?: string) => {
+      cancelAutoTransition()
+      targetEndTimeRef.current = null
+      setIsUserPaused(false)
+
+      setSession((prev) => {
+        const targetTaskId = taskId || prev.taskId
+        const isWorkEnding = prev.mode === 'work'
+        const minutesWorked = isWorkEnding
+          ? Math.max(1, Math.round((prev.workDuration - prev.timeLeft) / 60))
+          : Math.max(
+              1,
+              Math.round(
+                ((prev.mode === 'long_break'
+                  ? prev.longBreakDuration
+                  : prev.breakDuration) -
+                  prev.timeLeft) /
+                  60
+              )
+            )
+
+        if (prev.isSoundEnabled ?? true) {
+          playWorkCompleteSound()
+        }
+
+        const isLongBreak = prev.currentCycle >= prev.totalCycles
+        const nextMode: PomodoroMode = isLongBreak ? 'long_break' : 'short_break'
+        const nextTime = isLongBreak ? prev.longBreakDuration : prev.breakDuration
+
+        notify('Foco Concluído! 🎉', {
+          body: 'Tarefa finalizada com sucesso! Aproveite sua pausa.',
+          icon: '/vite.svg',
+        })
+
+        completedTitleRef.current = isLongBreak
+          ? '🌟 Pausa Longa Merecida! | Organy'
+          : '🎉 Foco Concluído! Parabéns! | Organy'
+
+        try {
+          confetti({
+            particleCount: 60,
+            spread: 70,
+            origin: { y: 0.7 },
+          })
+        } catch {
+          // Silencia falhas de renderização de canvas
+        }
+
+        if (targetTaskId && callbacksRef.current.onTaskMinuteLogged) {
+          callbacksRef.current.onTaskMinuteLogged(targetTaskId, minutesWorked)
+        }
+
+        callbacksRef.current.onSessionCompleted?.({
+          taskId: targetTaskId,
+          taskTitle: prev.taskTitle,
+          mode: prev.mode,
+          durationMinutes: minutesWorked,
+          completedAt: new Date().toISOString(),
+        })
+
+        callbacksRef.current.onActiveSessionChange?.(null)
+
+        return {
+          ...prev,
+          taskId: null,
+          taskTitle: undefined,
+          mode: nextMode,
+          timeLeft: nextTime,
+          isRunning: false,
+          isAutoTransitioning: false,
+          autoTransitionSecondsLeft: undefined,
+        }
+      })
+    },
+    [cancelAutoTransition]
+  )
+
   const restoreActiveSession = useCallback((persisted: ActivePomodoroSession | null) => {
     if (!persisted) return
 
@@ -1010,6 +1088,7 @@ export function usePomodoro(
     resetTimer,
     switchMode,
     clearFocusedTask,
+    completeFocusSession,
     formatTime,
     updateDurations,
     toggleSound,

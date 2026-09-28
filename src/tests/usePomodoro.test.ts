@@ -495,4 +495,100 @@ describe('usePomodoro hook', () => {
     expect(result.current.session.isRunning).toBe(false)
     expect(result.current.session.mode).toBe('short_break')
   })
+
+  it('completeFocusSession encerra a sessão de foco, calcula minutos trabalhados e comuta para pausa curta', () => {
+    const onTaskMinuteLogged = vi.fn()
+    const onSessionCompleted = vi.fn()
+    const onActiveSessionChange = vi.fn()
+
+    const { result } = renderHook(() =>
+      usePomodoro({
+        onTaskMinuteLogged,
+        onSessionCompleted,
+        onActiveSessionChange,
+      })
+    )
+
+    act(() => {
+      result.current.startFocus('task-focus-1', 'Estudo de Algoritmos')
+    })
+
+    // Avança 10 minutos (600 segundos) de 25 minutos
+    act(() => {
+      vi.advanceTimersByTime(10 * 60 * 1000)
+    })
+
+    act(() => {
+      result.current.completeFocusSession()
+    })
+
+    // Minutos trabalhados = 10 minutos
+    expect(onTaskMinuteLogged).toHaveBeenCalledWith('task-focus-1', 10)
+    expect(onSessionCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-focus-1',
+        taskTitle: 'Estudo de Algoritmos',
+        mode: 'work',
+        durationMinutes: 10,
+      })
+    )
+    expect(onActiveSessionChange).toHaveBeenCalledWith(null)
+    expect(result.current.session.taskId).toBeNull()
+    expect(result.current.session.taskTitle).toBeUndefined()
+    expect(result.current.session.isRunning).toBe(false)
+    expect(result.current.session.mode).toBe('short_break')
+    expect(result.current.session.timeLeft).toBe(5 * 60)
+    expect(notificationService.notify).toHaveBeenCalledWith(
+      'Foco Concluído! 🎉',
+      expect.objectContaining({
+        body: 'Tarefa finalizada com sucesso! Aproveite sua pausa.',
+      })
+    )
+  })
+
+  it('completeFocusSession comuta para pausa longa quando o ciclo atual atinge totalCycles', () => {
+    const onSessionCompleted = vi.fn()
+
+    const { result } = renderHook(() =>
+      usePomodoro({
+        onSessionCompleted,
+      })
+    )
+
+    // Ajusta o ciclo para totalCycles (4)
+    act(() => {
+      result.current.updateSettings({
+        longBreakCycles: 4,
+      })
+    })
+
+    act(() => {
+      // Simula ciclo 4
+      result.current.startFocus('task-cycle-4', 'Tarefa Ciclo 4')
+    })
+
+    // Forçamos o ciclo atual a ser 4
+    act(() => {
+      result.current.updateSettings({
+        longBreakCycles: 1, // totalCycles = 1, então currentCycle (1) >= totalCycles (1)
+      })
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(5 * 60 * 1000) // 5 minutos trabalhados
+    })
+
+    act(() => {
+      result.current.completeFocusSession('task-cycle-4')
+    })
+
+    expect(onSessionCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-cycle-4',
+        durationMinutes: 5,
+      })
+    )
+    expect(result.current.session.mode).toBe('long_break')
+    expect(result.current.session.timeLeft).toBe(15 * 60)
+  })
 })

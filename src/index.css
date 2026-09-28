@@ -125,3 +125,55 @@
 .animate-countdown-blink {
   animation: countdown-blink 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* Animação suave de feixe de borda gradiente (border-beam / traveling-border) */
+@keyframes border-beam {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.border-beam-active,
+.traveling-border {
+  position: relative;
+  overflow: hidden;
+}
+
+.border-beam-active::before,
+.traveling-border::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 280deg,
+    rgba(59, 130, 246, 0.2) 320deg,
+    rgba(37, 99, 235, 0.65) 350deg,
+    rgba(79, 70, 229, 0.8) 360deg
+  );
+  animation: border-beam 7s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.border-beam-active::after,
+.traveling-border::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  background-color: #ffffff;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dark .border-beam-active::after,
+.dark .traveling-border::after {
+  background-color: #0f172a;
+}

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Board } from '../components/Board'
 import type { Column, Task } from '../types/kanban'
@@ -115,17 +115,22 @@ describe('Board', () => {
     expect(onMoveColumn).toHaveBeenCalledWith('col-doing', 'left')
   })
 
-  it('permite edição inline de título e tema de cor da coluna', () => {
+  it('permite edição inline de título e tema de cor para colunas customizadas e oculta para colunas padrão', () => {
     const onUpdateColumn = vi.fn()
     render(<Board {...defaultProps} onUpdateColumn={onUpdateColumn} />)
 
-    // Clicar no botão de edição da coluna 'A Fazer'
-    const editBtn = screen.getByLabelText('Editar coluna A Fazer')
+    // Colunas padrão não exibem botão de edição
+    expect(screen.queryByLabelText('Editar coluna A Fazer')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Editar coluna Em Progresso')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Editar coluna Concluído')).not.toBeInTheDocument()
+
+    // Clicar no botão de edição da coluna customizada 'Revisão Custom'
+    const editBtn = screen.getByLabelText('Editar coluna Revisão Custom')
     fireEvent.click(editBtn)
 
     // Campo de input aparece
     const titleInput = screen.getByLabelText('Nome da coluna')
-    fireEvent.change(titleInput, { target: { value: 'Backlog Geral' } })
+    fireEvent.change(titleInput, { target: { value: 'Revisão Final' } })
 
     // Selecionar novo tema (ex: Âmbar)
     const amberTheme = screen.getByLabelText('Âmbar')
@@ -135,8 +140,8 @@ describe('Board', () => {
     const saveBtn = screen.getByLabelText('Salvar alterações da coluna')
     fireEvent.click(saveBtn)
 
-    expect(onUpdateColumn).toHaveBeenCalledWith('col-todo', {
-      title: 'Backlog Geral',
+    expect(onUpdateColumn).toHaveBeenCalledWith('col-custom', {
+      title: 'Revisão Final',
       colorTheme: 'amber',
     })
   })
