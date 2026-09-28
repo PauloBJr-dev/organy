@@ -199,4 +199,74 @@ describe('Board', () => {
 
     expect(onAddColumn).toHaveBeenCalledWith('Bloqueado', 'rose')
   })
+
+  it('gerencia o estado de drop centralizado entre colunas evitando colunas presas', () => {
+    const onMoveTask = vi.fn()
+    render(<Board {...defaultProps} onMoveTask={onMoveTask} />)
+
+    const todoCol = document.getElementById('column-col-todo')!
+    const doingCol = document.getElementById('column-col-doing')!
+
+    // 1. Inicialmente, nenhum indicador de drop está visível
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
+
+    // 2. Arrastar sobre a coluna "A Fazer"
+    fireEvent.dragOver(todoCol, {
+      dataTransfer: {
+        types: ['text/plain'],
+        dropEffect: 'move',
+      },
+    })
+
+    // Apenas a coluna "A Fazer" deve ter o indicador ativo
+    expect(screen.getByText('Solte para mover para A Fazer')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Solte para mover para Em Progresso')
+    ).not.toBeInTheDocument()
+
+    // 3. Mover o cursor para a coluna "Em Progresso"
+    fireEvent.dragOver(doingCol, {
+      dataTransfer: {
+        types: ['text/plain'],
+        dropEffect: 'move',
+      },
+    })
+
+    // "A Fazer" deve perder o indicador e "Em Progresso" deve ser a única ativa
+    expect(screen.queryByText('Solte para mover para A Fazer')).not.toBeInTheDocument()
+    expect(screen.getByText('Solte para mover para Em Progresso')).toBeInTheDocument()
+
+    // 4. Disparar evento global 'dragend'
+    fireEvent(window, new Event('dragend'))
+
+    // Nenhuma coluna deve permanecer ativa
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
+  })
+
+  it('limpa o indicador de drop e aciona onMoveTask ao soltar uma tarefa', () => {
+    const onMoveTask = vi.fn()
+    render(<Board {...defaultProps} onMoveTask={onMoveTask} />)
+
+    const todoCol = document.getElementById('column-col-todo')!
+
+    // Arrastar sobre a coluna
+    fireEvent.dragOver(todoCol, {
+      dataTransfer: {
+        types: ['text/plain'],
+        dropEffect: 'move',
+      },
+    })
+    expect(screen.getByTestId('drop-indicator')).toBeInTheDocument()
+
+    // Soltar tarefa
+    fireEvent.drop(todoCol, {
+      dataTransfer: {
+        getData: (type: string) => (type === 'text/plain' ? 't-2' : ''),
+      },
+    })
+
+    // Deve limpar o indicador e mover a tarefa
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
+    expect(onMoveTask).toHaveBeenCalledWith('t-2', 'col-todo')
+  })
 })

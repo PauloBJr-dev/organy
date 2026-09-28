@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState } from 'react'
 import {
   Plus,
   Trash2,
@@ -32,6 +32,8 @@ interface ColumnProps {
   ) => void
   onHideColumn?: (columnId: string) => void
   focusedTaskId?: string | null
+  isDragOver?: boolean
+  onDragOverColumn?: (columnId: string | null) => void
 }
 
 export const Column: React.FC<ColumnProps> = ({
@@ -50,9 +52,11 @@ export const Column: React.FC<ColumnProps> = ({
   onUpdateColumn,
   onHideColumn,
   focusedTaskId,
+  isDragOver: isDragOverProp,
+  onDragOverColumn,
 }) => {
-  const [isDragOver, setIsDragOver] = useState(false)
-  const dragDepthRef = useRef(0)
+  const [internalIsDragOver, setInternalIsDragOver] = useState(false)
+  const isDragOver = isDragOverProp !== undefined ? isDragOverProp : internalIsDragOver
   const [columnDragPosition, setColumnDragPosition] = useState<'left' | 'right' | null>(
     null
   )
@@ -158,18 +162,28 @@ export const Column: React.FC<ColumnProps> = ({
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  // Drop handlers with dragDepthRef anti-flickering protection
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    dragDepthRef.current += 1
-    if (!isDragOver) setIsDragOver(true)
+    const isColDrag = e.dataTransfer?.types
+      ? Array.from(e.dataTransfer.types).includes('text/kanban-column-id')
+      : false
+
+    if (!isColDrag) {
+      if (onDragOverColumn) {
+        onDragOverColumn(column.id)
+      } else {
+        setInternalIsDragOver(true)
+      }
+    }
   }
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move'
+    }
 
-    const isColDrag = e.dataTransfer.types
+    const isColDrag = e.dataTransfer?.types
       ? Array.from(e.dataTransfer.types).includes('text/kanban-column-id')
       : false
 
@@ -178,7 +192,11 @@ export const Column: React.FC<ColumnProps> = ({
       const isRight = rect.width > 0 ? e.clientX - rect.left > rect.width / 2 : false
       setColumnDragPosition(isRight ? 'right' : 'left')
     } else {
-      if (!isDragOver) setIsDragOver(true)
+      if (onDragOverColumn) {
+        onDragOverColumn(column.id)
+      } else {
+        setInternalIsDragOver(true)
+      }
     }
   }
 
@@ -188,19 +206,23 @@ export const Column: React.FC<ColumnProps> = ({
       return
     }
 
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
-    if (dragDepthRef.current === 0) {
-      setIsDragOver(false)
-      setColumnDragPosition(null)
+    if (onDragOverColumn) {
+      onDragOverColumn(null)
+    } else {
+      setInternalIsDragOver(false)
     }
+    setColumnDragPosition(null)
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    dragDepthRef.current = 0
-    setIsDragOver(false)
+    if (onDragOverColumn) {
+      onDragOverColumn(null)
+    } else {
+      setInternalIsDragOver(false)
+    }
 
-    const sourceColId = e.dataTransfer.getData('text/kanban-column-id')
+    const sourceColId = e.dataTransfer?.getData('text/kanban-column-id')
     if (sourceColId && onReorderColumns) {
       const dropPos = columnDragPosition
       setColumnDragPosition(null)
@@ -222,7 +244,7 @@ export const Column: React.FC<ColumnProps> = ({
     }
 
     setColumnDragPosition(null)
-    const taskId = e.dataTransfer.getData('text/plain')
+    const taskId = e.dataTransfer?.getData('text/plain')
     if (taskId) {
       onMoveTask(taskId, column.id)
     }

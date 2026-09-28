@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, X, Check, Eye } from 'lucide-react'
 import type { Column as ColumnType, Task } from '../types/kanban'
 import { Column } from './Column'
@@ -79,6 +79,17 @@ export const Board: React.FC<BoardProps> = ({
   const [isAddingColumn, setIsAddingColumn] = useState(false)
   const [newColumnTitle, setNewColumnTitle] = useState('')
   const [selectedTheme, setSelectedTheme] = useState<ColumnType['colorTheme']>('blue')
+  const [activeDragOverColumnId, setActiveDragOverColumnId] = useState<string | null>(
+    null
+  )
+
+  useEffect(() => {
+    const handleGlobalDragEnd = () => {
+      setActiveDragOverColumnId(null)
+    }
+    window.addEventListener('dragend', handleGlobalDragEnd)
+    return () => window.removeEventListener('dragend', handleGlobalDragEnd)
+  }, [])
 
   const themes: {
     id: ColumnType['colorTheme']
@@ -186,7 +197,14 @@ export const Board: React.FC<BoardProps> = ({
       </nav>
 
       {/* Horizontal Scroll Columns Area matching Stitch gap-5 items-start */}
-      <div className="flex items-start gap-5 overflow-x-auto pb-6 pt-1 px-0.5 scroll-smooth snap-x snap-mandatory">
+      <div
+        className="flex items-start gap-5 overflow-x-auto pb-6 pt-1 px-0.5 scroll-smooth snap-x snap-mandatory"
+        onDragLeave={(e) => {
+          if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as Node)) {
+            setActiveDragOverColumnId(null)
+          }
+        }}
+      >
         {columns.map((column) => {
           const colTasks = tasks.filter((t) => t.columnId === column.id)
           const isHidden = hiddenColumnIds.includes(column.id)
@@ -246,7 +264,10 @@ export const Board: React.FC<BoardProps> = ({
               onNewTaskInColumn={onNewTaskInColumn}
               onEditTask={onEditTask}
               onDeleteTask={onDeleteTask}
-              onMoveTask={onMoveTask}
+              onMoveTask={(taskId, targetColId) => {
+                setActiveDragOverColumnId(null)
+                onMoveTask(taskId, targetColId)
+              }}
               onToggleSubtask={onToggleSubtask}
               onStartFocus={onStartFocus}
               onDeleteColumn={onDeleteColumn}
@@ -255,6 +276,10 @@ export const Board: React.FC<BoardProps> = ({
               onUpdateColumn={onUpdateColumn}
               onHideColumn={onHideColumn}
               focusedTaskId={focusedTaskId}
+              isDragOver={activeDragOverColumnId === column.id}
+              onDragOverColumn={(colId: string | null) =>
+                setActiveDragOverColumnId(colId)
+              }
             />
           )
         })}

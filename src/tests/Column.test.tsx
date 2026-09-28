@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, createEvent } from '@testing-library/react'
 import { Column } from '../components/Column'
 import type { Column as ColumnType, Task } from '../types/kanban'
 
@@ -181,10 +181,9 @@ describe('Column Component', () => {
 
     // Dispara dragLeave para elemento interno da própria coluna (não deve esconder o indicador)
     const childElement = screen.getByText('A Fazer')
-    fireEvent.dragEnter(childElement)
-    fireEvent.dragLeave(columnRegion, {
-      relatedTarget: childElement,
-    })
+    const leaveEvent = createEvent.dragLeave(columnRegion)
+    Object.defineProperty(leaveEvent, 'relatedTarget', { value: childElement })
+    fireEvent(columnRegion, leaveEvent)
     expect(screen.getByTestId('drop-indicator')).toBeInTheDocument()
 
     // Dispara drop com taskId
@@ -194,5 +193,57 @@ describe('Column Component', () => {
       },
     })
     expect(baseProps.onMoveTask).toHaveBeenCalledWith('task-test-drop', 'col-todo')
+  })
+
+  it('notifica onDragOverColumn quando o cursor arrasta sobre a coluna ou sai dela', () => {
+    const onDragOverColumn = vi.fn()
+    const { rerender } = render(
+      <Column
+        {...baseProps}
+        column={defaultColumns[0]}
+        tasks={[]}
+        isDragOver={false}
+        onDragOverColumn={onDragOverColumn}
+      />
+    )
+
+    const columnRegion = screen.getByRole('region', { name: /Coluna A Fazer/i })
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
+
+    // Dispara dragOver de tarefa
+    fireEvent.dragOver(columnRegion, {
+      dataTransfer: {
+        types: ['text/plain'],
+        dropEffect: 'move',
+      },
+    })
+    expect(onDragOverColumn).toHaveBeenCalledWith('col-todo')
+
+    // Rerender com isDragOver=true controlado pelo pai
+    rerender(
+      <Column
+        {...baseProps}
+        column={defaultColumns[0]}
+        tasks={[]}
+        isDragOver={true}
+        onDragOverColumn={onDragOverColumn}
+      />
+    )
+    expect(screen.getByTestId('drop-indicator')).toBeInTheDocument()
+
+    // Dispara dragLeave para fora da coluna
+    fireEvent.dragLeave(columnRegion, {
+      relatedTarget: null,
+    })
+    expect(onDragOverColumn).toHaveBeenCalledWith(null)
+
+    // Dispara drop na coluna
+    fireEvent.drop(columnRegion, {
+      dataTransfer: {
+        getData: (type: string) => (type === 'text/plain' ? 'task-test-drop-2' : ''),
+      },
+    })
+    expect(onDragOverColumn).toHaveBeenCalledWith(null)
+    expect(baseProps.onMoveTask).toHaveBeenCalledWith('task-test-drop-2', 'col-todo')
   })
 })
