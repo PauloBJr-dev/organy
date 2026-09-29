@@ -74,13 +74,35 @@ describe('DailyFocusBanner (Banner Monolítico de Foco Diário e Pomodoro)', () 
     expect(
       screen.getByRole('button', { name: /Ativar modo de foco de 25 minutos/i })
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /Ativar modo de pausa de 5 minutos/i })
-    ).toBeInTheDocument()
+    const shortBreakBtn = screen.getByRole('button', {
+      name: /Ativar modo de pausa de 5 minutos/i,
+    })
+    expect(shortBreakBtn).toBeInTheDocument()
+    expect(shortBreakBtn).toHaveTextContent('5m Pausa Curta')
+    fireEvent.click(shortBreakBtn)
+    expect(onSwitchMode).toHaveBeenCalledWith('short_break')
 
-    // Display digital e status
+    const longBreakBtn = screen.getByRole('button', {
+      name: /Ativar modo de pausa longa de 15 minutos/i,
+    })
+    expect(longBreakBtn).toBeInTheDocument()
+    expect(longBreakBtn).toHaveTextContent('15m Pausa Longa')
+    fireEvent.click(longBreakBtn)
+    expect(onSwitchMode).toHaveBeenCalledWith('long_break')
+
+    // Botão de configurações REMOVIDO do card
+    expect(
+      screen.queryByRole('button', { name: /Configurações do Pomodoro/i })
+    ).not.toBeInTheDocument()
+
+    // Borda não possui border-beam-active quando timer está pausado
+    const section = screen.getByRole('region', { name: /Resumo do Foco Diário/i })
+    expect(section).not.toHaveClass('border-beam-active')
+
+    // Display digital e status sem ponto textual duplicado
     expect(screen.getByTestId('pomodoro-digital-display')).toHaveTextContent('25 : 00')
-    expect(screen.getByText(/Pronto para iniciar ciclo/i)).toBeInTheDocument()
+    expect(screen.getByText('Pronto para iniciar ciclo')).toBeInTheDocument()
+    expect(screen.queryByText(/●/)).not.toBeInTheDocument()
 
     // Botões de ação
     const playBtn = screen.getByRole('button', { name: /Iniciar foco/i })
@@ -104,7 +126,7 @@ describe('DailyFocusBanner (Banner Monolítico de Foco Diário e Pomodoro)', () 
     expect(screen.getByText(/Nenhuma tarefa vinculada/i)).toBeInTheDocument()
   })
 
-  it('exibe status ativo e título da tarefa vinculada com botão de desvincular', () => {
+  it('exibe status ativo, border-beam-active e título da tarefa vinculada com botão de desvincular', () => {
     const onClearTask = vi.fn()
 
     render(
@@ -121,7 +143,12 @@ describe('DailyFocusBanner (Banner Monolítico de Foco Diário e Pomodoro)', () 
       />
     )
 
-    expect(screen.getByText(/Em foco ativo/i)).toBeInTheDocument()
+    // Borda iluminada com border-beam-active quando timer estiver rodando
+    const section = screen.getByRole('region', { name: /Resumo do Foco Diário/i })
+    expect(section).toHaveClass('border-beam-active')
+
+    expect(screen.getByText('Em foco ativo')).toBeInTheDocument()
+    expect(screen.queryByText(/●/)).not.toBeInTheDocument()
     expect(screen.getByText(/Estudar TypeScript Avançado/i)).toBeInTheDocument()
 
     const clearBtn = screen.getByRole('button', { name: /Desvincular tarefa do timer/i })

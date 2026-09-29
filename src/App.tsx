@@ -195,6 +195,7 @@ export const AppContent: React.FC = () => {
     resetTimer,
     switchMode,
     clearFocusedTask,
+    completeFocusSession,
     formatTime,
     updateDurations,
     toggleSound,
@@ -574,8 +575,16 @@ export const AppContent: React.FC = () => {
       if (task && task.columnId !== targetColumnId) {
         toast.info(`Tarefa movida para ${targetCol?.title || 'nova coluna'}`)
       }
+
+      // Encerramento de foco ao mover para "Concluído"
+      const isDoneColumn =
+        targetColumnId === 'col-done' || targetColumnId.includes('done')
+      if (session.taskId === taskId && isDoneColumn) {
+        completeFocusSession(taskId)
+        toast.success('Parabéns! Sessão de foco concluída junto com a tarefa 🎉')
+      }
     },
-    [tasks, columns, moveTask, toast]
+    [tasks, columns, moveTask, toast, session.taskId, completeFocusSession]
   )
 
   const handleAddColumn = useCallback(
@@ -591,10 +600,15 @@ export const AppContent: React.FC = () => {
       columnId: string,
       updates: { title?: string; colorTheme?: Column['colorTheme'] }
     ) => {
+      const col = columns.find((c) => c.id === columnId)
+      if (col?.isPermanent || DEFAULT_COLUMN_IDS.includes(columnId as any)) {
+        toast.error('Colunas padrão não podem ser editadas')
+        return
+      }
       updateColumn(columnId, updates)
       toast.success('Coluna atualizada com sucesso')
     },
-    [updateColumn, toast]
+    [columns, updateColumn, toast]
   )
 
   const requestDeleteColumn = useCallback(

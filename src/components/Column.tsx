@@ -32,6 +32,8 @@ interface ColumnProps {
   ) => void
   onHideColumn?: (columnId: string) => void
   focusedTaskId?: string | null
+  isDragOver?: boolean
+  onDragOverColumn?: (columnId: string | null) => void
 }
 
 export const Column: React.FC<ColumnProps> = ({
@@ -50,8 +52,11 @@ export const Column: React.FC<ColumnProps> = ({
   onUpdateColumn,
   onHideColumn,
   focusedTaskId,
+  isDragOver: isDragOverProp,
+  onDragOverColumn,
 }) => {
-  const [isDragOver, setIsDragOver] = useState(false)
+  const [internalIsDragOver, setInternalIsDragOver] = useState(false)
+  const isDragOver = isDragOverProp !== undefined ? isDragOverProp : internalIsDragOver
   const [columnDragPosition, setColumnDragPosition] = useState<'left' | 'right' | null>(
     null
   )
@@ -157,12 +162,28 @@ export const Column: React.FC<ColumnProps> = ({
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  // Drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const isColDrag = e.dataTransfer?.types
+      ? Array.from(e.dataTransfer.types).includes('text/kanban-column-id')
+      : false
+
+    if (!isColDrag) {
+      if (onDragOverColumn) {
+        onDragOverColumn(column.id)
+      } else {
+        setInternalIsDragOver(true)
+      }
+    }
+  }
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move'
+    }
 
-    const isColDrag = e.dataTransfer.types
+    const isColDrag = e.dataTransfer?.types
       ? Array.from(e.dataTransfer.types).includes('text/kanban-column-id')
       : false
 
@@ -171,21 +192,37 @@ export const Column: React.FC<ColumnProps> = ({
       const isRight = rect.width > 0 ? e.clientX - rect.left > rect.width / 2 : false
       setColumnDragPosition(isRight ? 'right' : 'left')
     } else {
-      if (!isDragOver) setIsDragOver(true)
+      if (onDragOverColumn) {
+        onDragOverColumn(column.id)
+      } else {
+        setInternalIsDragOver(true)
+      }
     }
   }
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    setIsDragOver(false)
+    if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+      return
+    }
+
+    if (onDragOverColumn) {
+      onDragOverColumn(null)
+    } else {
+      setInternalIsDragOver(false)
+    }
     setColumnDragPosition(null)
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    setIsDragOver(false)
+    if (onDragOverColumn) {
+      onDragOverColumn(null)
+    } else {
+      setInternalIsDragOver(false)
+    }
 
-    const sourceColId = e.dataTransfer.getData('text/kanban-column-id')
+    const sourceColId = e.dataTransfer?.getData('text/kanban-column-id')
     if (sourceColId && onReorderColumns) {
       const dropPos = columnDragPosition
       setColumnDragPosition(null)
@@ -207,7 +244,7 @@ export const Column: React.FC<ColumnProps> = ({
     }
 
     setColumnDragPosition(null)
-    const taskId = e.dataTransfer.getData('text/plain')
+    const taskId = e.dataTransfer?.getData('text/plain')
     if (taskId) {
       onMoveTask(taskId, column.id)
     }
@@ -216,6 +253,7 @@ export const Column: React.FC<ColumnProps> = ({
   return (
     <div
       id={`column-${column.id}`}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -356,21 +394,23 @@ export const Column: React.FC<ColumnProps> = ({
             )}
 
             {/* Edit column title & theme */}
-            {onUpdateColumn && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditTitle(column.title)
-                  setEditTheme(column.colorTheme)
-                  setIsEditing(true)
-                }}
-                title="Editar coluna"
-                aria-label={`Editar coluna ${column.title}`}
-                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 cursor-pointer"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {onUpdateColumn &&
+              !column.isPermanent &&
+              !DEFAULT_COLUMN_IDS.includes(column.id as any) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTitle(column.title)
+                    setEditTheme(column.colorTheme)
+                    setIsEditing(true)
+                  }}
+                  title="Editar coluna"
+                  aria-label={`Editar coluna ${column.title}`}
+                  className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 cursor-pointer"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
 
             {/* Hide column button */}
             {onHideColumn && (
@@ -435,7 +475,7 @@ export const Column: React.FC<ColumnProps> = ({
         {isDragOver && (
           <div
             data-testid="drop-indicator"
-            className="py-3 px-4 border-2 border-dashed border-blue-400 bg-blue-50/40 dark:bg-blue-950/40 ring-2 ring-blue-400/20 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 animate-pulse select-none transition-all duration-200 shadow-xs"
+            className="pointer-events-none py-3 px-4 border-2 border-dashed border-blue-400 bg-blue-50/40 dark:bg-blue-950/40 ring-2 ring-blue-400/20 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 select-none transition-all duration-200 shadow-xs"
           >
             <div className="w-2 h-2 rounded-full bg-blue-500" />
             <span>Solte para mover para {column.title}</span>

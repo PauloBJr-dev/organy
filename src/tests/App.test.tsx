@@ -7,10 +7,17 @@ import { pomodoroSessionService } from '../services/pomodoroSessionService'
 import * as useAuthModule from '../hooks/useAuth'
 import type { User } from '@supabase/supabase-js'
 
+vi.mock('canvas-confetti', () => ({
+  default: vi.fn(),
+}))
+
 describe('App Integration', () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem('organy_guest_acknowledged', 'true')
+    delete (window as any).location
+    window.location = new URL('http://localhost:5173/') as any
+    vi.restoreAllMocks()
   })
 
   it('exibe a tela dedicada de autenticação AuthView na primeira visita e permite continuar como visitante', async () => {
@@ -467,5 +474,92 @@ describe('App Integration', () => {
     expect(screen.getByText('Criar Nova Senha')).toBeInTheDocument()
     expect(screen.getByLabelText('Nova Senha')).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar Nova Senha')).toBeInTheDocument()
+  })
+
+  it('encerra a sessão de foco com celebração ao mover a tarefa focada para Concluído', async () => {
+    localStorage.setItem(
+      'organy_kanban_guest',
+      JSON.stringify({
+        columns: [
+          {
+            id: 'col-todo',
+            title: 'A Fazer',
+            order: 0,
+            colorTheme: 'blue',
+            isPermanent: true,
+          },
+          {
+            id: 'col-progress',
+            title: 'Em Progresso',
+            order: 1,
+            colorTheme: 'amber',
+            isPermanent: true,
+          },
+          {
+            id: 'col-review',
+            title: 'Em Espera',
+            order: 2,
+            colorTheme: 'purple',
+            isPermanent: true,
+          },
+          {
+            id: 'col-done',
+            title: 'Concluído Hoje',
+            order: 3,
+            colorTheme: 'emerald',
+            isPermanent: true,
+          },
+        ],
+        tasks: [
+          {
+            id: 'task-test-focus',
+            title: 'Estudar Álgebra Linear',
+            columnId: 'col-todo',
+            priority: 'high',
+            tags: ['Estudos'],
+            subtasks: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        version: 1,
+      })
+    )
+
+    render(<App />)
+
+    // Localiza o botão de iniciar foco na tarefa criada
+    const focusButton = await screen.findByTitle('Iniciar Pomodoro nesta tarefa')
+    expect(focusButton).toBeInTheDocument()
+    fireEvent.click(focusButton)
+
+    // Verifica que o banner está em foco ativo
+    expect(await screen.findByText('Em foco ativo')).toBeInTheDocument()
+
+    const doneColumn = screen.getByRole('region', { name: /Coluna Concluído Hoje/i })
+    expect(doneColumn).toBeInTheDocument()
+
+    // Move a tarefa para a coluna Concluído Hoje
+    fireEvent.drop(doneColumn, {
+      dataTransfer: {
+        getData: (type: string) => (type === 'text/plain' ? 'task-test-focus' : ''),
+      },
+    })
+
+    // Deve exibir o toast de celebração
+    expect(
+      await screen.findByText(/Parabéns! Sessão de foco concluída junto com a tarefa 🎉/i)
+    ).toBeInTheDocument()
+  })
+
+  it('impede a edição de qualquer coluna padrão do sistema pelo quadro', async () => {
+    render(<App />)
+
+    expect(screen.queryByLabelText('Editar coluna A Fazer')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Editar coluna Em Progresso')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Editar coluna Em Espera')).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText('Editar coluna Concluído Hoje')
+    ).not.toBeInTheDocument()
   })
 })
